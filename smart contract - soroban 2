@@ -1,0 +1,71 @@
+#![no_std]
+use soroban_sdk::{contract, contractimpl, symbol, vec, Env, Symbol, Vec};
+
+#[contract]
+pub struct Token {
+    balances: Vec<(Symbol, u64)>,
+    allowances: Vec<((Symbol, Symbol), u64)>,
+}
+
+#[contractimpl]
+impl Token {
+    /// Cria um novo token com o símbolo inicial e a quantidade total fornecida.
+    pub fn new(env: Env, symbol: Symbol, initial_supply: u64) -> Self {
+        let mut balances = vec![(symbol.clone(), initial_supply)];
+        let allowances = Vec::new();
+        Self { balances, allowances }
+    }
+
+    /// Retorna o saldo do token para o endereço especificado.
+    pub fn balance_of(&self, _env: Env, owner: Symbol) -> u64 {
+        self.balances.iter().find(|(sym, _)| sym == &owner).map_or(0, |(_, balance)| *balance)
+    }
+
+    /// Transfere a quantidade especificada de tokens do remetente para o destinatário.
+    pub fn transfer(&mut self, _env: Env, to: Symbol, amount: u64) -> bool {
+        let sender = _env.sender();
+        let sender_balance = self.balance_of(_env.clone(), sender.clone());
+        if sender_balance >= amount {
+            if let Some((to_sym, to_balance)) = self.balances.iter_mut().find(|(sym, _)| sym == &to) {
+                *to_balance += amount;
+                self.balances.iter_mut().find(|(sym, _)| sym == &sender).map(|(_, balance)| *balance -= amount);
+                true
+            } else {
+                self.balances.push((to.clone(), amount));
+                self.balances.iter_mut().find(|(sym, _)| sym == &sender).map(|(_, balance)| *balance -= amount);
+                true
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Aprova que `spender` pode retirar tokens em nome do proprietário.
+    pub fn approve(&mut self, _env: Env, spender: Symbol, amount: u64) -> bool {
+        let owner = _env.sender();
+        self.allowances.push(((owner, spender), amount));
+        true
+    }
+
+    /// Retorna a quantidade de tokens que o `spender` está autorizado a retirar do `owner`.
+    pub fn allowance(&self, _env: Env, owner: Symbol, spender: Symbol) -> u64 {
+        self.allowances.iter().find(|((owner_sym, spender_sym), _)| owner_sym == &owner && spender_sym == &spender)
+            .map_or(0, |(_, allowance)| *allowance)
+    }
+
+    /// Transfere tokens do `from` para o `to`, desde que o `from` tenha aprovado o `to` a retirar a quantidade especificada.
+    pub fn transfer_from(&mut self, _env: Env, from: Symbol, to: Symbol, amount: u64) -> bool {
+        let allowance = self.allowance(_env.clone(), from.clone(), _env.sender());
+        if allowance >= amount {
+            if self.transfer(_env.clone(), to.clone(), amount) {
+                self.allowances.iter_mut().find(|((owner, spender), _)| owner == &from && spender == &_env.sender())
+                    .map(|(_, allowance)| *allowance -= amount);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+}
