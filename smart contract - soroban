@@ -1,0 +1,42 @@
+Esboço V00001 - Para aprendizado 
+
+#![no_std]
+use soroban_sdk::{contract, contractimpl, symbol, vec, Env, Symbol, Vec};
+
+#[contract]
+pub struct Token {
+    balances: Vec<(Symbol, u64)>,
+}
+
+#[contractimpl]
+impl Token {
+    /// Cria um novo token com o símbolo inicial e a quantidade total fornecida.
+    pub fn new(env: Env, symbol: Symbol, initial_supply: u64) -> Self {
+        let mut balances = vec![(symbol.clone(), initial_supply)];
+        Self { balances }
+    }
+
+    /// Retorna o saldo do token para o endereço especificado.
+    pub fn balance_of(&self, _env: Env, owner: Symbol) -> u64 {
+        self.balances.iter().find(|(sym, _)| sym == &owner).map_or(0, |(_, balance)| *balance)
+    }
+
+    /// Transfere a quantidade especificada de tokens do remetente para o destinatário.
+    pub fn transfer(&mut self, _env: Env, to: Symbol, amount: u64) -> bool {
+        let sender = _env.sender();
+        let sender_balance = self.balance_of(_env.clone(), sender.clone());
+        if sender_balance >= amount {
+            if let Some((to_sym, to_balance)) = self.balances.iter_mut().find(|(sym, _)| sym == &to) {
+                *to_balance += amount;
+                self.balances.iter_mut().find(|(sym, _)| sym == &sender).map(|(_, balance)| *balance -= amount);
+                true
+            } else {
+                self.balances.push((to.clone(), amount));
+                self.balances.iter_mut().find(|(sym, _)| sym == &sender).map(|(_, balance)| *balance -= amount);
+                true
+            }
+        } else {
+            false
+        }
+    }
+}
